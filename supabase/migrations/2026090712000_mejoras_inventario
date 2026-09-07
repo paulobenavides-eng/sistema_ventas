@@ -1,0 +1,62 @@
+BEGIN;
+
+-- Agregar fecha de creación
+ALTER TABLE public.productos
+ADD COLUMN IF NOT EXISTS creado_en timestamptz NOT NULL DEFAULT now();
+
+ALTER TABLE public.clientes
+ADD COLUMN IF NOT EXISTS creado_en timestamptz NOT NULL DEFAULT now();
+
+ALTER TABLE public.ventas
+ADD COLUMN IF NOT EXISTS creado_en timestamptz NOT NULL DEFAULT now();
+
+-- Vista del inventario por sucursal
+CREATE OR REPLACE VIEW public.vista_inventario_sucursales AS
+SELECT
+    ps.id_producto_sucursal,
+    p.nombre AS producto,
+    s.nombre AS sucursal,
+    ps.cantidad,
+    ps.ubicacion,
+    CASE
+        WHEN ps.cantidad = 0 THEN 'Agotado'
+        WHEN ps.cantidad <= 5 THEN 'Inventario bajo'
+        ELSE 'Disponible'
+    END AS estado_inventario
+FROM public.productos_sucursal ps
+INNER JOIN public.productos p
+    ON p.id_producto = ps.id_producto
+INNER JOIN public.sucursales s
+    ON s.id_sucursal = ps.id_sucursal;
+
+-- Vista con resumen de ventas
+CREATE OR REPLACE VIEW public.vista_resumen_ventas AS
+SELECT
+    v.id_venta,
+    v.fecha,
+    CONCAT_WS(' ', c.nombre, c.apellido) AS cliente,
+    CONCAT_WS(' ', e.nombre, e.apellido) AS empleado,
+    s.nombre AS sucursal,
+    COALESCE(SUM(vd.subtotal), 0)::numeric(12,2) AS total_venta
+FROM public.ventas v
+LEFT JOIN public.clientes c
+    ON c.id_cliente = v.id_cliente
+LEFT JOIN public.empleados e
+    ON e.id_empleado = v.id_empleado
+LEFT JOIN public.sucursales s
+    ON s.id_sucursal = v.id_sucursal
+LEFT JOIN public.ventas_detalle vd
+    ON vd.id_venta = v.id_venta
+GROUP BY
+    v.id_venta,
+    v.fecha,
+    c.nombre,
+    c.apellido,
+    e.nombre,
+    e.apellido,
+    s.nombre;
+
+COMMIT;
+
+-- Mostrar los cambios realizados
+SELECT * FROM public.vista_inventario_sucursales;
